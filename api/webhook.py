@@ -7,7 +7,6 @@ app = Flask(__name__)
 
 twilio_client = Client(os.environ["TWILIO_ACCOUNT_SID"], os.environ["TWILIO_AUTH_TOKEN"])
 
-# DeepSeek 兼容 OpenAI 的 SDK，直接用 openai 库就行
 deepseek_client = OpenAI(
     api_key=os.environ["DEEPSEEK_API_KEY"],
     base_url="https://api.deepseek.com"
@@ -47,26 +46,38 @@ MikeStyle 是一个主打简约休闲风格的服装品牌，所有产品均提�
 
 @app.route("/api/webhook", methods=["POST"])
 def webhook():
-    user_msg = request.form.get("Body", "")
-    user_phone = request.form.get("From", "")
+    try:
+        user_msg = request.form.get("Body", "")
+        user_phone = request.form.get("From", "")
 
-    history = conversation_history.get(user_phone, [])
-    history.append({"role": "user", "content": user_msg})
+        history = conversation_history.get(user_phone, [])
+        history.append({"role": "user", "content": user_msg})
 
-    response = deepseek_client.chat.completions.create(
-        model="deepseek-chat",
-        messages=[{"role": "system", "content": SYSTEM_PROMPT}] + history[-20:],
-        max_tokens=500
-    )
+        response = deepseek_client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role": "system", "content": SYSTEM_PROMPT}] + history[-20:],
+            max_tokens=500
+        )
 
-    reply = response.choices[0].message.content
-    history.append({"role": "assistant", "content": reply})
-    conversation_history[user_phone] = history
+        reply = response.choices[0].message.content
+        history.append({"role": "assistant", "content": reply})
+        conversation_history[user_phone] = history
 
-    twilio_client.messages.create(
-        from_="whatsapp:+14155238886",
-        to=user_phone,
-        body=reply
-    )
+        twilio_client.messages.create(
+            from_="whatsapp:+14155238886",
+            to=user_phone,
+            body=reply
+        )
 
-    return "", 200
+        return "", 200
+
+    except Exception as e:
+        twilio_client.messages.create(
+            from_="whatsapp:+14155238886",
+            to=request.form.get("From", ""),
+            body=f"DEBUG: {str(e)}"
+        )
+        return str(e), 500
+
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)
